@@ -81,14 +81,19 @@ def _provider_openai_compatible(name: str, key: str, model: str, base_url: str |
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=key, base_url=base_url, timeout=CALL_TIMEOUT,
-                                max_retries=0)
-        response = await client.chat.completions.create(
-            model=model,
-            temperature=0,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": user}],
-        )
+                             max_retries=0)
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": user}]
+        try:
+            response = await client.chat.completions.create(
+                model=model, temperature=0,
+                response_format={"type": "json_object"}, messages=messages)
+        except Exception:
+            # Some gateways reject response_format or do not implement it. The prompt
+            # already demands JSON only, so retry without it rather than losing the
+            # provider - a spare that errors out is not a spare.
+            response = await client.chat.completions.create(
+                model=model, temperature=0, messages=messages)
         return response.choices[0].message.content or ""
 
     return Provider(name, model, call)
