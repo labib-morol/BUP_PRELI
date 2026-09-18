@@ -26,11 +26,16 @@ quality is not judged; technical clarity is.
    - **D** — the architecture diagram (draw it once — see the box below)
 3. Paste this in the terminal (do **not** press Enter yet):
 
-```bash
-curl -s -X POST https://gridwise-llm-rm21.onrender.com/optimize-energy \
-  -H "Content-Type: application/json" \
-  -d @public_sample_01.json | python -m json.tool
 ```
+python tools/demo_request.py
+```
+
+**Do not use raw `curl` here.** On Windows PowerShell, `curl` is an alias for
+`Invoke-WebRequest`, `\` is not a line continuation, and `@file` means splatting, so
+the command fails for reasons that have nothing to do with the service — which looks
+bad on camera. `demo_request.py` avoids all shell quoting issues and prints the
+interpretation, the full 24-hour plan, and a verdict line confirming the cost equals
+the organizer's reference optimum.
 
 4. Silence notifications. Record the whole thing in one take if you can.
 
@@ -136,7 +141,7 @@ the project, and the zero-gap claim is verifiable evidence of exactness.
 **Visual:** Switch to the terminal (window **C**). Press Enter on the prepared `curl`.
 Let the JSON response appear on screen. Then run:
 
-```bash
+```
 python tools/test_public.py --http https://gridwise-llm-rm21.onrender.com
 ```
 
