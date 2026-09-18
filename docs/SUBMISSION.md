@@ -37,7 +37,7 @@ https://github.com/labib-morol/BUP_PRELI
 
 ```
 labibmorol/gridwise-llm:1.0.0
-sha256:9db69cddf17ecafad29610ee8e617876a816c6326d172a574613364135364ede
+sha256:86d1e9828a774d0bbb7814d9631328bd61abe6e363482b9e37075c000553c6a9
 ```
 
 Repository is **public**, so judges can pull without credentials. Verified
@@ -52,7 +52,8 @@ curl http://127.0.0.1:8000/health
 
 ## 4. Environment variables (names only — never values)
 
-Required for interpretation: `GEMINI_API_KEY`
+Required for interpretation: `GEMINI_API_KEY` (one provider is enough to run; four
+independent quota buckets are recommended, see below)
 
 Configured on Render:
 
@@ -65,7 +66,9 @@ Configured on Render:
 | `GRIDWISE_LLM_TIMEOUT` | `10` |
 | `GRIDWISE_LLM_BUDGET` | `8.0` |
 | `GRIDWISE_LLM_DEADLINE` | `20` |
-| `GROQ_API_KEY` | optional spare |
+| `GROQ_API_KEY` | second opinion in the parallel pair |
+| `GEMINI_API_KEY_2` (or `GEMINI_API_KEY2`) | second Google project: independent quota bucket |
+| `GROQ_API_KEY_2` (or `GROQ_API_KEY2`) | second Groq key: independent quota bucket |
 
 ## 5. Model / provider disclosure
 

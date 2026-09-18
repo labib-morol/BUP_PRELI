@@ -106,6 +106,20 @@ def _provider_openai_compatible(name: str, key: str, model: str, base_url: str |
     return Provider(name, model, call)
 
 
+def _env(*names: str) -> str:
+    """First non-empty value among `names`.
+
+    Accepts both `GEMINI_API_KEY_2` and `GEMINI_API_KEY2` spellings: a silently
+    unread key is indistinguishable from an exhausted quota at runtime, which is
+    exactly the failure this redundancy is meant to prevent.
+    """
+    for name in names:
+        value = os.getenv(name)
+        if value and value.strip():
+            return value.strip()
+    return ""
+
+
 def available_providers() -> list[Provider]:
     """Providers in preference order, driven entirely by environment variables.
 
@@ -142,6 +156,23 @@ def available_providers() -> list[Provider]:
         providers.append(_provider_openai_compatible(
             "groq", groq_key, os.getenv("GRIDWISE_GROQ_MODEL", "openai/gpt-oss-20b"),
             "https://api.groq.com/openai/v1"))
+
+    # Second key per vendor. A separate project is a separate quota bucket, so these
+    # fail independently of the first key even when they run the same model - which is
+    # the failure actually observed: one model exhausted while its neighbour on the
+    # same key kept answering.
+    gemini_key_2 = _env("GEMINI_API_KEY_2", "GEMINI_API_KEY2")
+    if gemini_key_2:
+        providers.append(_provider_gemini(
+            gemini_key_2, os.getenv("GRIDWISE_GEMINI_MODEL",
+                                    "gemini-flash-lite-latest")))
+
+    groq_key_2 = _env("GROQ_API_KEY_2", "GROQ_API_KEY2")
+    if groq_key_2:
+        providers.append(_provider_openai_compatible(
+            "groq2", groq_key_2, os.getenv("GRIDWISE_GROQ_MODEL", "openai/gpt-oss-20b"),
+            "https://api.groq.com/openai/v1"))
+
     if gemini_key:
         second = (os.getenv("GRIDWISE_GEMINI_LITE_MODEL")
                   or os.getenv("GRIDWISE_GEMINI_MODEL_2") or "gemini-3.1-flash-lite")
@@ -258,31 +289,44 @@ async def _consensus(providers: list[Provider], user: str, note_count: int) -> l
     absent - the schedule stays valid, it just cannot hedge on that request.
     """
     started = time.perf_counter()
-    tasks = [asyncio.create_task(_call_provider(p, user, note_count))
-             for p in providers[:CONSENSUS]]
+    remaining = {asyncio.create_task(_call_provider(p, user, note_count))
+                 for p in providers[:CONSENSUS]}
 
-    # BUDGET is the total wall-clock cap for collecting opinions, not a first round
-    # that can then be extended. An earlier version extended past it to avoid cutting
-    # off the primary provider early, which let a single slow call reach ~12s measured
-    # against the live deployment - well outside the 5s p95 band. A provider that
-    # cannot answer inside the budget is treated as absent and the recovery path
-    # handles the case where nothing answered at all.
-    done, pending = await asyncio.wait(tasks, timeout=BUDGET)
-    for task in pending:
-        task.cancel()
-    if pending:
-        await asyncio.gather(*pending, return_exceptions=True)
-
+    # Collect opinions until the budget runs out, but stop early once at least one
+    # provider has answered and the grace window for a second opinion has passed.
+    # Waiting for a provider that is failing costs the full timeout of the provider we
+    # are failing over FROM - measured at 7.28s against a quota-exhausted primary when
+    # the working fallback had answered in 0.6s.
     readings: list[list[dict]] = []
-    for task in done:
-        if task.cancelled():
-            continue
-        try:
-            result = task.result()
-        except Exception:  # noqa: BLE001 - a failed task is just an absent vote
-            continue
-        if result:
-            readings.append(result)
+    grace_until: float | None = None
+    while remaining:
+        now = time.perf_counter()
+        left = BUDGET - (now - started)
+        if grace_until is not None:
+            left = min(left, grace_until - now)
+        if left <= 0:
+            break
+        done, pending = await asyncio.wait(remaining, timeout=left,
+                                           return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            if task.cancelled():
+                continue
+            try:
+                result = task.result()
+            except Exception:  # noqa: BLE001 - a failed task is just an absent vote
+                continue
+            if result:
+                readings.append(result)
+        remaining = pending
+        if readings and grace_until is None:
+            grace_until = time.perf_counter() + GRACE
+        if grace_until is not None and time.perf_counter() >= grace_until:
+            break
+
+    for task in remaining:
+        task.cancel()
+    if remaining:
+        await asyncio.gather(*remaining, return_exceptions=True)
 
     if not readings:
         # Every provider failed. With no reading at all the response would degrade to

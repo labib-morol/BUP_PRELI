@@ -27,6 +27,10 @@ from .directives import NO_OP, WINDOW_TYPES, Directive, union_all
 
 MAX_HOUR = 23
 
+# A window ending later than this cannot be a plausible wrap into the next morning, so
+# the safe-direction superset is not worth its cost on optimality.
+WRAP_PLAUSIBLE_END = 6
+
 _NUMBER = r"(\d+(?:\.\d+)?)"
 _CLOCK = re.compile(
     r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b"
@@ -163,6 +167,13 @@ def wrap_candidate(note: str, reported: Directive) -> Directive | None:
 
     start, end = hours
     if end >= start:
+        return None
+
+    # Only a genuinely plausible wrap is worth hedging. "10 PM until 2 AM" is a real
+    # overnight window and the early hours must be covered; "10 PM until 12 PM" is a
+    # slip for midnight, and enforcing a fourteen-hour window there would cost real
+    # optimality to protect against a reading nobody intends.
+    if end > WRAP_PLAUSIBLE_END:
         return None
     full = tuple(sorted(set(range(start, 24)) | set(range(0, end))))
     if full == reported.hours:

@@ -121,9 +121,10 @@ or set them in the platform dashboard.
 | Variable | Required | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | one of these | Google Gemini provider (primary) |
-| `GEMINI_API_KEY_2` | no | second Google key from a different project: an independent quota bucket used as failover |
+| `GEMINI_API_KEY_2` (or `GEMINI_API_KEY2`) | no | second Google key from a different project: an independent quota bucket |
 | `EXTRA_API_KEY` / `EXTRA_BASE_URL` / `EXTRA_MODEL` / `EXTRA_NAME` | no | any OpenAI-compatible endpoint as a final failover provider |
-| `GROQ_API_KEY` | one of these | Groq provider (spare capacity) |
+| `GROQ_API_KEY` | one of these | Groq provider, second opinion in the default pair |
+| `GROQ_API_KEY_2` (or `GROQ_API_KEY2`) | no | second Groq key: another independent quota bucket |
 | `OPENAI_API_KEY` | one of these | OpenAI provider |
 | `OPENROUTER_API_KEY` | one of these | OpenRouter provider |
 | `GRIDWISE_GEMINI_MODEL` | no | primary model, default `gemini-flash-lite-latest` |
@@ -276,7 +277,7 @@ curl http://127.0.0.1:8000/health
 ```
 
 Published reference: `labibmorol/gridwise-llm:1.0.0`
-(`sha256:9db69cddf17ecafad29610ee8e617876a816c6326d172a574613364135364ede`).
+(`sha256:86d1e9828a774d0bbb7814d9631328bd61abe6e363482b9e37075c000553c6a9`).
 
 Verified before publishing: `/health` answers `200 {"status":"ok"}` in ~13 ms with
 **no environment variables set at all**, and the image contains no credentials -
