@@ -20,11 +20,16 @@ import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from .env import load_dotenv
 from .prompt import SYSTEM_PROMPT, build_few_shot_block, build_user_prompt
+
+load_dotenv()
 
 log = logging.getLogger("gridwise.llm")
 
-CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "8"))
+CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "7"))
+GRACE = float(os.getenv("GRIDWISE_CONSENSUS_GRACE", "2.0"))
+BUDGET = float(os.getenv("GRIDWISE_LLM_BUDGET", "4.0"))
 CONSENSUS = max(1, int(os.getenv("GRIDWISE_CONSENSUS", "2")))
 MAX_CONCURRENT = max(1, int(os.getenv("GRIDWISE_LLM_CONCURRENCY", "4")))
 CACHE_SIZE = 512
@@ -56,6 +61,7 @@ def _provider_gemini(key: str, model: str) -> Provider:
                 system_instruction=system,
                 temperature=0,
                 response_mime_type="application/json",
+                max_output_tokens=1024,
             ),
         )
         return response.text or ""
@@ -83,24 +89,30 @@ def _provider_openai_compatible(name: str, key: str, model: str, base_url: str |
 def available_providers() -> list[Provider]:
     """Providers in preference order, driven entirely by environment variables.
 
-    A second model from the same key counts as an independent opinion: comparing
-    readings across model families is what produces the disagreement signal the
-    guardrails use to decide whether hedging is worth its cost. Set
-    GRIDWISE_GEMINI_MODEL_2="" to run a single provider.
+    Order matters: `gather_readings` consults the first `GRIDWISE_CONSENSUS`
+    providers in parallel, so the first two entries are the two opinions that get
+    compared. A cross-family pair (Gemini + Llama) is a stronger disagreement
+    signal than two models from one family, which is why Groq sits second and the
+    same-key Gemini lite model sits third, where it acts as spare capacity when a
+    provider is rate-limited or down.
+
+    Set GRIDWISE_GEMINI_LITE_MODEL="" to drop the spare.
     """
     providers: list[Provider] = []
     gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if gemini_key:
         providers.append(_provider_gemini(
             gemini_key, os.getenv("GRIDWISE_GEMINI_MODEL", "gemini-2.5-flash")))
-        second = os.getenv("GRIDWISE_GEMINI_MODEL_2", "gemini-2.5-flash-lite")
-        if second:
-            providers.append(_provider_gemini(gemini_key, second))
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         providers.append(_provider_openai_compatible(
             "groq", groq_key, os.getenv("GRIDWISE_GROQ_MODEL", "llama-3.3-70b-versatile"),
             "https://api.groq.com/openai/v1"))
+    if gemini_key:
+        lite = (os.getenv("GRIDWISE_GEMINI_LITE_MODEL")
+                or os.getenv("GRIDWISE_GEMINI_MODEL_2") or "gemini-2.5-flash-lite")
+        if lite:
+            providers.append(_provider_gemini(gemini_key, lite))
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         providers.append(_provider_openai_compatible(
@@ -145,21 +157,26 @@ def parse_readings(text: str, note_count: int) -> list[dict] | None:
 
 
 async def _call_provider(provider: Provider, user: str, note_count: int) -> list[dict] | None:
+    """One attempt, one deadline.
+
+    Deliberately no retry: a retried timeout costs a second full timeout inside a
+    5-second p95 budget. A slow provider is simply a provider that did not get to
+    vote this time - the caller falls back to whichever readings did arrive.
+    """
     system = f"{SYSTEM_PROMPT}\n\nEXAMPLES\n{build_few_shot_block()}"
+    started = time.perf_counter()
     async with _semaphore:
-        for attempt in (1, 2):
-            started = time.perf_counter()
-            try:
-                text = await asyncio.wait_for(provider.call(system, user), timeout=CALL_TIMEOUT)
-            except Exception as error:  # noqa: BLE001 - any provider failure is non-fatal
-                log.warning("provider %s attempt %d failed: %s: %s",
-                            provider.name, attempt, type(error).__name__, error)
-                continue
-            readings = parse_readings(text, note_count)
-            if readings:
-                log.info("provider %s ok in %.2fs", provider.name, time.perf_counter() - started)
-                return readings
-            log.warning("provider %s returned unparsable output", provider.name)
+        try:
+            text = await asyncio.wait_for(provider.call(system, user), timeout=CALL_TIMEOUT)
+        except Exception as error:  # noqa: BLE001 - any provider failure is non-fatal
+            log.warning("provider %s did not answer within %.1fs: %s",
+                        provider.name, CALL_TIMEOUT, type(error).__name__)
+            return None
+    readings = parse_readings(text, note_count)
+    if readings:
+        log.info("provider %s ok in %.2fs", provider.name, time.perf_counter() - started)
+        return readings
+    log.warning("provider %s returned unparsable output", provider.name)
     return None
 
 
@@ -174,6 +191,61 @@ def _cache_put(key: tuple, value: list[list[dict]]) -> None:
     _cache_order.append(key)
     while len(_cache_order) > CACHE_SIZE:
         _cache.pop(_cache_order.pop(0), None)
+
+
+async def _gather(providers: list[Provider], user: str, note_count: int) -> list[list[dict]]:
+    """Readings from every provider that answered with a complete, parsable result."""
+    results = await asyncio.gather(
+        *(_call_provider(provider, user, note_count) for provider in providers),
+        return_exceptions=True,
+    )
+    return [r for r in results if isinstance(r, list) and len(r) == note_count]
+
+
+async def _consensus(providers: list[Provider], user: str, note_count: int) -> list[list[dict]]:
+    """Collect readings without ever letting the slowest provider set the latency.
+
+    The first answer is awaited up to the call timeout; the remaining opinions then
+    get a grace window bounded by BUDGET, which is usually enough for a second model
+    to vote and enable hedging without pushing the request past the 5-second p95
+    threshold. Providers that miss the window are cancelled and their vote is simply
+    absent - the schedule stays valid, it just cannot hedge on that request.
+    """
+    started = time.perf_counter()
+    tasks = [asyncio.create_task(_call_provider(p, user, note_count))
+             for p in providers[:CONSENSUS]]
+    done, pending = await asyncio.wait(tasks, timeout=CALL_TIMEOUT,
+                                       return_when=asyncio.FIRST_COMPLETED)
+
+    if done and pending:
+        remaining = max(0.0, BUDGET - (time.perf_counter() - started))
+        grace = min(GRACE, remaining)
+        if grace > 0.05:
+            extra, pending = await asyncio.wait(pending, timeout=grace)
+            done |= extra
+    for task in pending:
+        task.cancel()
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    readings: list[list[dict]] = []
+    for task in done:
+        if task.cancelled():
+            continue
+        try:
+            result = task.result()
+        except Exception:  # noqa: BLE001 - a failed task is just an absent vote
+            continue
+        if result:
+            readings.append(result)
+
+    if not readings:
+        for provider in providers[CONSENSUS:]:
+            result = await _call_provider(provider, user, note_count)
+            if result:
+                readings.append(result)
+                break
+    return readings
 
 
 async def gather_readings(notes: list[str], capacity_kwh: float, initial_kwh: float,
@@ -192,16 +264,8 @@ async def gather_readings(notes: list[str], capacity_kwh: float, initial_kwh: fl
 
     user = build_user_prompt(notes, capacity_kwh, initial_kwh, minimum_kwh)
     note_count = len(notes)
-    chosen = providers[:CONSENSUS]
-    results = await asyncio.gather(
-        *(_call_provider(provider, user, note_count) for provider in chosen),
-        return_exceptions=True,
-    )
 
-    per_provider: list[list[dict]] = []
-    for result in results:
-        if isinstance(result, list) and len(result) == note_count:
-            per_provider.append(result)
+    per_provider = await _consensus(providers, user, note_count)
     if not per_provider:
         return [[] for _ in notes]
 

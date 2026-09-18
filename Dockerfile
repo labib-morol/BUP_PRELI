@@ -5,11 +5,28 @@
 #
 # /health is ready with no credentials at all; a provider key is only needed for
 # operator-note interpretation. No secrets are baked into this image.
-FROM python:3.12-slim AS base
+
+# Stage 1: Builder
+FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
+
+WORKDIR /build
+
+# Create virtual environment and install requirements
+COPY requirements.txt .
+RUN python -m venv /opt/venv \
+ && /opt/venv/bin/pip install --upgrade pip \
+ && /opt/venv/bin/pip install -r requirements.txt
+
+# Stage 2: Final Image
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
 
 # libgomp1 is required by the bundled CBC solver shipped with PuLP.
 RUN apt-get update \
@@ -18,13 +35,15 @@ RUN apt-get update \
 
 WORKDIR /srv
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
+# Copy application files
 COPY app ./app
 COPY tools ./tools
 COPY docs ./docs
 
+# Set up non-root user
 RUN useradd --create-home --uid 10001 gridwise && chown -R gridwise /srv
 USER gridwise
 

@@ -137,9 +137,9 @@ or set them in the platform dashboard.
 `GET /` reports which providers are currently configured, which makes a
 misconfigured deployment obvious in one request.
 
-**Model and provider disclosure.** Interpretation uses Google `gemini-2.5-flash` as the
+**Model and provider disclosure (Parallel LLM Consensus).** Interpretation uses Google `gemini-2.5-flash` as the
 primary model, with `gemini-2.5-flash-lite` as an independent second opinion from the
-same key, and optionally Llama 3.3 70B on Groq. Temperature is `0` for determinism.
+same key (processed in parallel for fast consensus), and optionally Llama 3.3 70B on Groq. Temperature is `0` for determinism.
 
 ---
 
@@ -199,8 +199,8 @@ Two numerical details matter for correctness:
 Every returned plan is replayed hour by hour — balance, effective solar, battery
 transitions, bounds, rate limits, directive-specific rules, end-of-day neutrality, and
 the reported totals — before the response leaves the process. If the faithful directive
-set cannot be satisfied, the service walks down a fallback ladder (drop the least
-confident directive, then base rules only, then a static plan) instead of failing the
+set cannot be satisfied, the service walks down a 4-tier feasibility ladder (1. full directives, 2. drop the least
+confident directive, 3. base rules only, 4. static plan) instead of failing the
 request. A provider outage degrades to `no_op` interpretations with a valid plan and a
 warning in `plan_summary`; it never returns a 5xx.
 

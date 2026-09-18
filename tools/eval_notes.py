@@ -104,7 +104,7 @@ async def run(entries: list[dict], verbose: bool) -> int:
         result = score(entry, directive)
         for key, ok in result.items():
             totals[key].append(ok)
-            axis_totals[entry["axis"]].append(all(result.values()))
+        axis_totals[entry["axis"]].append(all(result.values()))
         if not all(result.values()):
             failures.append(
                 f"{entry['id']:7s} {entry['axis']:28s} "
