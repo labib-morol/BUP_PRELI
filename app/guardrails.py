@@ -282,6 +282,26 @@ def window_candidate(note: str, reported: Directive) -> Directive | None:
     return replace(reported, hours=window)
 
 
+def factor_candidate(note: str, reported: Directive) -> Directive | None:
+    """A second reading of a solar_reduction derived from the note's own percentage.
+
+    Percentage direction is the trap the specification calls out for hidden cases:
+    "drops to 20%" leaves factor 0.2 while "drops by 20%" leaves 0.8, and reading it
+    backwards invalidates the whole case. When the deterministic parse disagrees with
+    the model, both readings join the candidate set and the merge keeps the lower
+    factor - the safe direction - so the schedule honours whichever is ground truth
+    while the reported interpretation stays the model's own.
+    """
+    if reported.directive_type != "solar_reduction" or reported.factor is None:
+        return None
+    expected = expected_solar_factor(note)
+    if expected is None or abs(expected - reported.factor) <= 0.02:
+        return None
+    if expected >= reported.factor:
+        return None
+    return replace(reported, factor=expected)
+
+
 def explain(assessment: Assessment) -> str:
     directive = assessment.reported
     if not directive.applies:

@@ -24,11 +24,11 @@ services:
       - key: GRIDWISE_GROQ_MODEL
         value: openai/gpt-oss-20b
       - key: GRIDWISE_CONSENSUS
-        value: "2"
+        value: "1"
       - key: GRIDWISE_LLM_TIMEOUT
         value: "10"
       - key: GRIDWISE_LLM_BUDGET
-        value: "4.0"
+        value: "8.0"
       - key: GRIDWISE_LLM_DEADLINE
         value: "20"
       - key: GROQ_API_KEY

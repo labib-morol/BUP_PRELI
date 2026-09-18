@@ -33,7 +33,10 @@ log = logging.getLogger("gridwise.llm")
 # is capped by the same value.
 CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "10"))
 GRACE = float(os.getenv("GRIDWISE_CONSENSUS_GRACE", "2.0"))
-BUDGET = float(os.getenv("GRIDWISE_LLM_BUDGET", "4.0"))
+# Total wall-clock cap for the whole opinion-gathering phase. Must exceed a cold
+# provider call (~7.4s) so a legitimately slow first call completes rather than
+# being cancelled into the recovery path; warm calls return as soon as they land.
+BUDGET = float(os.getenv("GRIDWISE_LLM_BUDGET", "8.0"))
 # Hard ceiling for the recovery path when every provider failed. The judge
 # allows 30s per request; this keeps the worst case well inside it.
 DEADLINE = float(os.getenv("GRIDWISE_LLM_DEADLINE", "20"))
@@ -258,16 +261,13 @@ async def _consensus(providers: list[Provider], user: str, note_count: int) -> l
     tasks = [asyncio.create_task(_call_provider(p, user, note_count))
              for p in providers[:CONSENSUS]]
 
-    # Wait for the bonus opinions only as long as the budget allows, but never
-    # cancel the first-listed provider early: it is the one whose answer we want,
-    # and cutting it off mid-flight would force the slower recovery path.
-    done, pending = await asyncio.wait(tasks, timeout=BUDGET,
-                                       return_when=asyncio.ALL_COMPLETED)
-    if tasks[0] in pending:
-        remaining = CALL_TIMEOUT - (time.perf_counter() - started)
-        if remaining > 0.05:
-            extra, pending = await asyncio.wait({tasks[0]}, timeout=remaining)
-            done |= extra
+    # BUDGET is the total wall-clock cap for collecting opinions, not a first round
+    # that can then be extended. An earlier version extended past it to avoid cutting
+    # off the primary provider early, which let a single slow call reach ~12s measured
+    # against the live deployment - well outside the 5s p95 band. A provider that
+    # cannot answer inside the budget is treated as absent and the recovery path
+    # handles the case where nothing answered at all.
+    done, pending = await asyncio.wait(tasks, timeout=BUDGET)
     for task in pending:
         task.cancel()
     if pending:
