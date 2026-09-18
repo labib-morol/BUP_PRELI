@@ -27,12 +27,16 @@ load_dotenv()
 
 log = logging.getLogger("gridwise.llm")
 
-CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "6"))
+# Must exceed a cold provider call (~7.4s measured from a cold container:
+# DNS + TLS + SDK init on top of model latency). Set it lower and the first
+# request after a scale-to-zero wake can never succeed, because the retry path
+# is capped by the same value.
+CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "10"))
 GRACE = float(os.getenv("GRIDWISE_CONSENSUS_GRACE", "2.0"))
 BUDGET = float(os.getenv("GRIDWISE_LLM_BUDGET", "4.0"))
 # Hard ceiling for the recovery path when every provider failed. The judge
 # allows 30s per request; this keeps the worst case well inside it.
-DEADLINE = float(os.getenv("GRIDWISE_LLM_DEADLINE", "12"))
+DEADLINE = float(os.getenv("GRIDWISE_LLM_DEADLINE", "20"))
 # One call per request by default: it halves provider quota usage, which is the
 # binding constraint in practice, and removes the second-opinion wait entirely.
 # The deterministic window hedge still works from a single reading. Set to 2 to

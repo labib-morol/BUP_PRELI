@@ -262,14 +262,14 @@ variable; a provider key is only needed to interpret operator notes.
 
 ```bash
 # build locally
-docker build -t <dockerhub-user>/gridwise-llm:1.0.0 .
+docker build -t labibmorol/gridwise-llm:1.0.0 .
 
 # or pull the published fallback image
-docker pull <dockerhub-user>/gridwise-llm:1.0.0
+docker pull labibmorol/gridwise-llm:1.0.0
 
 docker run --rm -p 8000:8000 \
   -e GEMINI_API_KEY=<your-key> \
-  <dockerhub-user>/gridwise-llm:1.0.0
+  labibmorol/gridwise-llm:1.0.0
 
 curl http://127.0.0.1:8000/health
 # {"status":"ok"}

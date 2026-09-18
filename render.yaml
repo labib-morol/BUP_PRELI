@@ -26,8 +26,10 @@ services:
       - key: GRIDWISE_CONSENSUS
         value: "2"
       - key: GRIDWISE_LLM_TIMEOUT
-        value: "7"
+        value: "10"
       - key: GRIDWISE_LLM_BUDGET
         value: "4.0"
+      - key: GRIDWISE_LLM_DEADLINE
+        value: "20"
       - key: GROQ_API_KEY
         sync: false
