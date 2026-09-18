@@ -16,7 +16,7 @@ verified, and the remaining time should go into the LLM layer, deployment and th
 | `app/directives.py` | directive model + **same-type overlap merge** in the safe direction |
 | `app/schemas.py` | request/response contract, liberal request parsing |
 | `app/prompt.py` | system prompt + few-shot bank over the paraphrase axes |
-| `app/llm.py` | parallel consensus across providers, cache, timeouts, retries |
+| `app/llm.py` | parallel consensus across providers, cache, latency budget, failure recovery |
 | `app/pipeline.py` | orchestration + fallback ladder |
 | `app/main.py` | FastAPI, `400/422/500` contract, `/health` needs no key |
 | `tools/` | `model_check.py`, `test_public.py --guards/--direct/--http`, `test_http_stub.py`, `eval_notes.py` |

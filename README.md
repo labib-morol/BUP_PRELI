@@ -33,8 +33,8 @@ operator_notes
 Requires Python 3.11+ (developed and tested on 3.14) or Docker.
 
 ```bash
-git clone <this-repository-url>
-cd BUP_PRELI
+git clone https://github.com/labib-morol/BUP_PRELI.git
+cd BUP_PRELI          # the repository directory (a local checkout may be named differently)
 
 python -m venv .venv
 # Windows
@@ -124,12 +124,15 @@ or set them in the platform dashboard.
 | `GROQ_API_KEY` | one of these | Groq provider (fast second opinion) |
 | `OPENAI_API_KEY` | one of these | OpenAI provider |
 | `OPENROUTER_API_KEY` | one of these | OpenRouter provider |
-| `GRIDWISE_GEMINI_MODEL` | no | default `gemini-2.5-flash` |
-| `GRIDWISE_GEMINI_MODEL_2` | no | second Gemini model, default `gemini-2.5-flash-lite`; set empty to disable |
-| `GRIDWISE_GROQ_MODEL` | no | default `llama-3.3-70b-versatile` |
+| `GRIDWISE_GEMINI_MODEL` | no | primary model, default `gemini-flash-lite-latest` |
+| `GRIDWISE_GEMINI_MODEL_2` | no | spare Gemini model, default `gemini-3.1-flash-lite`; set empty to disable |
+| `GRIDWISE_GROQ_MODEL` | no | default `openai/gpt-oss-20b` |
 | `GRIDWISE_OPENAI_MODEL` | no | default `gpt-4o-mini` |
-| `GRIDWISE_CONSENSUS` | no | how many providers to consult, default `2` |
-| `GRIDWISE_LLM_TIMEOUT` | no | per-call timeout in seconds, default `8` |
+| `GRIDWISE_CONSENSUS` | no | how many providers to consult in parallel, default `1` |
+| `GRIDWISE_LLM_DEADLINE` | no | ceiling for the retry path when every provider failed, default `12` |
+| `GRIDWISE_LLM_TIMEOUT` | no | per-call timeout in seconds, default `7` |
+| `GRIDWISE_LLM_BUDGET` | no | total wall-clock allowance for consensus, default `4.0`; the second opinion is dropped rather than delaying the response |
+| `GRIDWISE_CONSENSUS_GRACE` | no | extra window for a second opinion, default `2.0`, capped by `GRIDWISE_LLM_BUDGET` |
 | `GRIDWISE_LLM_CONCURRENCY` | no | max concurrent provider calls, default `4` |
 | `GRIDWISE_LLM_CHAIN` | no | comma-separated provider preference order |
 | `PORT` | no | listen port, default `8000` |
@@ -137,9 +140,13 @@ or set them in the platform dashboard.
 `GET /` reports which providers are currently configured, which makes a
 misconfigured deployment obvious in one request.
 
-**Model and provider disclosure (Parallel LLM Consensus).** Interpretation uses Google `gemini-2.5-flash` as the
-primary model, with `gemini-2.5-flash-lite` as an independent second opinion from the
-same key (processed in parallel for fast consensus), and optionally Llama 3.3 70B on Groq. Temperature is `0` for determinism.
+**Model and provider disclosure (Parallel LLM Consensus).** Interpretation uses Google
+`gemini-flash-lite-latest` as the primary model, `openai/gpt-oss-20b` on Groq as an
+independent cross-family second opinion, and `gemini-3.1-flash-lite` as spare capacity from
+the same Google key. The two opinions are requested in parallel, so p95 is the slower of the
+two rather than their sum. Temperature is `0` for determinism. Model names are configuration
+rather than code: each is an environment variable, and `python tools/check_providers.py`
+reports what a given key can actually reach.
 
 ---
 
@@ -235,7 +242,10 @@ Expected results:
 | `tools/test_public.py --guards` | `14 windows and 3 factors cross-checked, 0 disagreement(s)` |
 | `tools/test_public.py --direct` | `10/10 valid and optimal, mean cost ratio 1.0000 (optimization quality 10.00/10)` |
 | `tools/test_http_stub.py` | `ALL STUB HTTP TESTS PASSED` |
-| `tools/test_public.py --http <url>` | every case `interp=ok plan=ok ratio=1.0000`, p95 latency under 5 s |
+| `tools/test_public.py --http <url>` | every case `interp=ok plan=ok ratio=1.0000` |
+| `tools/eval_notes.py` | `fully correct notes: 39/39 (100.0%)`, `projected interpretation category: 25.00/25` |
+| `tools/check_providers.py` | `all providers reachable` |
+| `tools/load_test.py --url <url>` | p50 ~4.1 s, p95 ~4.1 s, 0 failures on 30 distinct notes |
 
 `tools/test_public.py --http` prints one line per public case with the interpretation
 match, plan validity, cost ratio and the p95 latency measured across the run — that is

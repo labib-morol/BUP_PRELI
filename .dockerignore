@@ -1,0 +1,16 @@
+# Keep credentials, history and scratch work out of the build context entirely.
+# The Dockerfile only copies app/, tools/, docs/ and requirements.txt, but the
+# context is still uploaded, and a future `COPY . .` would otherwise bake in .env.
+.env
+.env.local
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+scratch/
+.pytest_cache/
+*.log
+docs/*.pdf
+docs/*.zip

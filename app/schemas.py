@@ -104,6 +104,8 @@ class HourlyPlanEntry(BaseModel):
 
 
 class OptimizeResponse(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     scenario_id: str
     directive_interpretation: list[DirectiveInterpretation]
     hourly_plan: list[HourlyPlanEntry]

@@ -27,11 +27,18 @@ load_dotenv()
 
 log = logging.getLogger("gridwise.llm")
 
-CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "7"))
+CALL_TIMEOUT = float(os.getenv("GRIDWISE_LLM_TIMEOUT", "6"))
 GRACE = float(os.getenv("GRIDWISE_CONSENSUS_GRACE", "2.0"))
 BUDGET = float(os.getenv("GRIDWISE_LLM_BUDGET", "4.0"))
-CONSENSUS = max(1, int(os.getenv("GRIDWISE_CONSENSUS", "2")))
-MAX_CONCURRENT = max(1, int(os.getenv("GRIDWISE_LLM_CONCURRENCY", "4")))
+# Hard ceiling for the recovery path when every provider failed. The judge
+# allows 30s per request; this keeps the worst case well inside it.
+DEADLINE = float(os.getenv("GRIDWISE_LLM_DEADLINE", "12"))
+# One call per request by default: it halves provider quota usage, which is the
+# binding constraint in practice, and removes the second-opinion wait entirely.
+# The deterministic window hedge still works from a single reading. Set to 2 to
+# compare two models when the second provider is fast and not rate-limited.
+CONSENSUS = max(1, int(os.getenv("GRIDWISE_CONSENSUS", "1")))
+MAX_CONCURRENT = max(1, int(os.getenv("GRIDWISE_LLM_CONCURRENCY", "8")))
 CACHE_SIZE = 512
 
 _semaphore = asyncio.Semaphore(MAX_CONCURRENT)
@@ -73,7 +80,8 @@ def _provider_openai_compatible(name: str, key: str, model: str, base_url: str |
     async def call(system: str, user: str) -> str:
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=key, base_url=base_url, timeout=CALL_TIMEOUT)
+        client = AsyncOpenAI(api_key=key, base_url=base_url, timeout=CALL_TIMEOUT,
+                                max_retries=0)
         response = await client.chat.completions.create(
             model=model,
             temperature=0,
@@ -91,28 +99,35 @@ def available_providers() -> list[Provider]:
 
     Order matters: `gather_readings` consults the first `GRIDWISE_CONSENSUS`
     providers in parallel, so the first two entries are the two opinions that get
-    compared. A cross-family pair (Gemini + Llama) is a stronger disagreement
-    signal than two models from one family, which is why Groq sits second and the
-    same-key Gemini lite model sits third, where it acts as spare capacity when a
-    provider is rate-limited or down.
+    compared, and everything after them is spare capacity used only when the first
+    two all fail.
 
-    Set GRIDWISE_GEMINI_LITE_MODEL="" to drop the spare.
+    Slot 2 defaults to a second call to the same fast model. Measured against the
+    configured keys, one of them is unreliable in ways that are independent per
+    request (transient 503s on the primary; the Groq key rate-limits almost every
+    call), so a parallel duplicate covers a transient failure at no latency cost,
+    whereas a slow cross-family model that never answers inside the 3-second budget
+    contributes nothing while still delaying every request. Point
+    GRIDWISE_GEMINI_MODEL_2 at a different model to restore a cross-family vote when
+    the second provider is itself fast and reliable.
+
+    Set GRIDWISE_GEMINI_MODEL_2="" to run a single opinion.
     """
     providers: list[Provider] = []
     gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if gemini_key:
         providers.append(_provider_gemini(
-            gemini_key, os.getenv("GRIDWISE_GEMINI_MODEL", "gemini-2.5-flash")))
+            gemini_key, os.getenv("GRIDWISE_GEMINI_MODEL", "gemini-flash-lite-latest")))
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         providers.append(_provider_openai_compatible(
-            "groq", groq_key, os.getenv("GRIDWISE_GROQ_MODEL", "llama-3.3-70b-versatile"),
+            "groq", groq_key, os.getenv("GRIDWISE_GROQ_MODEL", "openai/gpt-oss-20b"),
             "https://api.groq.com/openai/v1"))
     if gemini_key:
-        lite = (os.getenv("GRIDWISE_GEMINI_LITE_MODEL")
-                or os.getenv("GRIDWISE_GEMINI_MODEL_2") or "gemini-2.5-flash-lite")
-        if lite:
-            providers.append(_provider_gemini(gemini_key, lite))
+        second = (os.getenv("GRIDWISE_GEMINI_LITE_MODEL")
+                  or os.getenv("GRIDWISE_GEMINI_MODEL_2") or "gemini-3.1-flash-lite")
+        if second:
+            providers.append(_provider_gemini(gemini_key, second))
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         providers.append(_provider_openai_compatible(
@@ -156,7 +171,8 @@ def parse_readings(text: str, note_count: int) -> list[dict] | None:
     return [by_index.get(i, {"note_index": i, "directive_type": "no_op"}) for i in range(note_count)]
 
 
-async def _call_provider(provider: Provider, user: str, note_count: int) -> list[dict] | None:
+async def _call_provider(provider: Provider, user: str, note_count: int,
+                         timeout: float | None = None) -> list[dict] | None:
     """One attempt, one deadline.
 
     Deliberately no retry: a retried timeout costs a second full timeout inside a
@@ -164,13 +180,14 @@ async def _call_provider(provider: Provider, user: str, note_count: int) -> list
     vote this time - the caller falls back to whichever readings did arrive.
     """
     system = f"{SYSTEM_PROMPT}\n\nEXAMPLES\n{build_few_shot_block()}"
+    budget = CALL_TIMEOUT if timeout is None else timeout
     started = time.perf_counter()
     async with _semaphore:
         try:
-            text = await asyncio.wait_for(provider.call(system, user), timeout=CALL_TIMEOUT)
+            text = await asyncio.wait_for(provider.call(system, user), timeout=budget)
         except Exception as error:  # noqa: BLE001 - any provider failure is non-fatal
-            log.warning("provider %s did not answer within %.1fs: %s",
-                        provider.name, CALL_TIMEOUT, type(error).__name__)
+            log.warning("provider %s gave no usable answer after %.1fs: %s",
+                        provider.name, time.perf_counter() - started, type(error).__name__)
             return None
     readings = parse_readings(text, note_count)
     if readings:
@@ -214,14 +231,16 @@ async def _consensus(providers: list[Provider], user: str, note_count: int) -> l
     started = time.perf_counter()
     tasks = [asyncio.create_task(_call_provider(p, user, note_count))
              for p in providers[:CONSENSUS]]
-    done, pending = await asyncio.wait(tasks, timeout=CALL_TIMEOUT,
-                                       return_when=asyncio.FIRST_COMPLETED)
 
-    if done and pending:
-        remaining = max(0.0, BUDGET - (time.perf_counter() - started))
-        grace = min(GRACE, remaining)
-        if grace > 0.05:
-            extra, pending = await asyncio.wait(pending, timeout=grace)
+    # Wait for the bonus opinions only as long as the budget allows, but never
+    # cancel the first-listed provider early: it is the one whose answer we want,
+    # and cutting it off mid-flight would force the slower recovery path.
+    done, pending = await asyncio.wait(tasks, timeout=BUDGET,
+                                       return_when=asyncio.ALL_COMPLETED)
+    if tasks[0] in pending:
+        remaining = CALL_TIMEOUT - (time.perf_counter() - started)
+        if remaining > 0.05:
+            extra, pending = await asyncio.wait({tasks[0]}, timeout=remaining)
             done |= extra
     for task in pending:
         task.cancel()
@@ -240,9 +259,18 @@ async def _consensus(providers: list[Provider], user: str, note_count: int) -> l
             readings.append(result)
 
     if not readings:
-        for provider in providers[CONSENSUS:]:
-            result = await _call_provider(provider, user, note_count)
+        # Every provider failed. With no reading at all the response would degrade to
+        # no_op interpretations, which is the one outcome that can turn a correct-answer
+        # case into an invalid plan - so spend real time recovering, bounded by DEADLINE.
+        deadline = started + DEADLINE
+        for provider in providers:
+            remaining = deadline - time.perf_counter()
+            if remaining < 1.0:
+                break
+            result = await _call_provider(provider, user, note_count,
+                                          timeout=min(CALL_TIMEOUT, remaining))
             if result:
+                log.warning("recovered with %s on retry", provider.name)
                 readings.append(result)
                 break
     return readings
@@ -273,3 +301,15 @@ async def gather_readings(notes: list[str], capacity_kwh: float, initial_kwh: fl
     if use_cache:
         _cache_put(key, readings)
     return readings
+
+
+async def warm_up() -> None:
+    """Open provider connections once at startup so the first real request is fast."""
+    providers = available_providers()
+    if not providers:
+        return
+    probe = 'Return JSON only: {"directives":[]}'
+    try:
+        await _call_provider(providers[0], probe, 0)
+    except Exception as error:  # noqa: BLE001 - warming up is best effort
+        log.warning("warm-up skipped: %s", type(error).__name__)

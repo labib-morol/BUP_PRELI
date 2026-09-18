@@ -71,18 +71,26 @@ def union(a: Directive, b: Directive) -> tuple[Directive, ...]:
 
     hours = tuple(sorted(set(a.hours) | set(b.hours)))
     if a.directive_type == "solar_reduction":
-        return (Directive("solar_reduction", hours, factor=min(a.factor or 1.0, b.factor or 1.0)),)
+        # Explicit None handling: `a.factor or 1.0` would turn a legitimate factor of
+        # 0.0 ("solar drops to zero") into 1.0, silently dropping the constraint.
+        left = 1.0 if a.factor is None else a.factor
+        right = 1.0 if b.factor is None else b.factor
+        return (Directive("solar_reduction", hours, factor=min(left, right)),)
     if a.directive_type == "minimum_battery_reserve":
+        left = 0.0 if a.minimum_energy_kwh is None else a.minimum_energy_kwh
+        right = 0.0 if b.minimum_energy_kwh is None else b.minimum_energy_kwh
         return (
-            Directive(
-                "minimum_battery_reserve",
-                hours,
-                minimum_energy_kwh=max(a.minimum_energy_kwh or 0.0, b.minimum_energy_kwh or 0.0),
-            ),
+            Directive("minimum_battery_reserve", hours,
+                      minimum_energy_kwh=max(left, right)),
         )
     if a.directive_type in WINDOW_TYPES:
         return (Directive(a.directive_type, hours),)
-    return (Directive("max_grid_window", hours, max_grid_kwh=min(a.max_grid_kwh, b.max_grid_kwh)),)
+    cap = float("inf")
+    for candidate in (a.max_grid_kwh, b.max_grid_kwh):
+        if candidate is not None:
+            cap = min(cap, candidate)
+    return (Directive("max_grid_window", hours,
+                      max_grid_kwh=None if cap == float("inf") else cap),)
 
 
 def union_all(directives: list[Directive]) -> tuple[Directive, ...]:

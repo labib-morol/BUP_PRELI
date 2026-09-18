@@ -153,7 +153,7 @@ def mode_http(cases, base_url: str) -> int:
             if not interpretation_ok or errors or ratio < 0.999:
                 failures += 1
     latencies.sort()
-    p95 = latencies[max(0, int(0.95 * len(latencies)) - 1)]
+    p95 = latencies[min(len(latencies) - 1, int(0.95 * len(latencies)))]
     print(f"http: {len(cases) - failures}/{len(cases)} fully correct, "
           f"p95 latency {p95:.2f}s")
     return failures

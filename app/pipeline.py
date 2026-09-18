@@ -8,7 +8,8 @@ from __future__ import annotations
 import logging
 
 from .directives import Directive
-from .guardrails import Assessment, assess, explain
+from .directives import NO_OP
+from .guardrails import Assessment, assess, explain, window_candidate
 from .llm import gather_readings
 from .optimizer import Solution, solve, static_plan, to_plan, totals
 from .schemas import DirectiveInterpretation, HourlyPlanEntry, OptimizeRequest, OptimizeResponse
@@ -63,9 +64,10 @@ async def run(request: OptimizeRequest) -> tuple[OptimizeResponse, dict]:
 
     assessments: list[Assessment] = []
     for index, note in enumerate(notes):
-        parsed = []
-        for raw in readings[index]:
-            parsed.append(_parse(raw, battery.capacity_kwh))
+        parsed = [_parse(raw, battery.capacity_kwh) for raw in readings[index]]
+        candidate = window_candidate(note, parsed[0] if parsed else NO_OP)
+        if candidate is not None:
+            parsed.append(candidate)
         assessments.append(assess(index, note, parsed, battery.capacity_kwh))
 
     applied: list[Directive] = []

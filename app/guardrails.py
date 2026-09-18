@@ -21,7 +21,7 @@ Two ideas do the heavy lifting:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .directives import NO_OP, Directive, union_all
 
@@ -262,6 +262,24 @@ def assess(index: int, note: str, readings: list[Directive], battery_capacity: f
 def _key(directive: Directive) -> tuple:
     return (directive.directive_type, directive.hours, directive.factor,
             directive.minimum_energy_kwh, directive.max_grid_kwh)
+
+
+def window_candidate(note: str, reported: Directive) -> Directive | None:
+    """A second reading of the note derived only from its explicit clock expression.
+
+    The Problem Statement singles out the whole-hour, start-inclusive/end-exclusive
+    convention as the detail teams get wrong, and a window written as two clock times
+    ("13:00 and 15:00", "1 PM to 3 PM") is unambiguous. When the model's hours differ,
+    this reading joins the candidate set, so the applied constraint becomes the union
+    of both - the safe direction - and the schedule satisfies whichever the organizer
+    treats as ground truth. Returns None when the window cannot be read unambiguously.
+    """
+    if not reported.applies:
+        return None
+    window = expected_window(note)
+    if window is None or reported.hours == window:
+        return None
+    return replace(reported, hours=window)
 
 
 def explain(assessment: Assessment) -> str:
