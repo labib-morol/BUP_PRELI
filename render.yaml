@@ -1,0 +1,27 @@
+# Render blueprint - one-click deploy of the fallback-capable service.
+#
+#   Render dashboard -> New -> Blueprint -> pick this repository -> Apply
+#   Then set GEMINI_API_KEY in the service's Environment tab (it is never stored here).
+#
+# The free plan spins a service down after 15 minutes without traffic; add a free
+# uptime monitor (e.g. UptimeRobot, 5-minute interval) pointed at /health so the
+# container is always warm when the judge calls it. See docs/EXECUTION.md.
+services:
+  - type: web
+    name: gridwise-llm
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GRIDWISE_GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GRIDWISE_GEMINI_MODEL_2
+        value: gemini-2.5-flash-lite
+      - key: GRIDWISE_CONSENSUS
+        value: "2"
+      - key: GRIDWISE_LLM_TIMEOUT
+        value: "8"

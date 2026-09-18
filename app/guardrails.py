@@ -51,6 +51,9 @@ _REMAINING_CUE = re.compile(
 _WORDS = {
     "half": 0.5,
     "one-half": 0.5,
+    "halve": 0.5,
+    "halves": 0.5,
+    "halved": 0.5,
     "quarter": 0.25,
     "one-quarter": 0.25,
     "three-quarters": 0.75,
@@ -134,6 +137,8 @@ def expected_solar_factor(note: str) -> float | None:
         return round(percent / 100.0, 6)
 
     lowered = note.lower()
+    if re.search(r"\b(zero|nil|no solar|no output|no generation)\b", lowered):
+        return 0.0
     for word, value in _WORDS.items():
         if re.search(rf"\b{re.escape(word)}\b", lowered):
             return value
