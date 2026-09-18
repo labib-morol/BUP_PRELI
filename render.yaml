@@ -23,8 +23,11 @@ services:
         value: gemini-3.1-flash-lite
       - key: GRIDWISE_GROQ_MODEL
         value: openai/gpt-oss-20b
+      # Two providers in parallel. With one provider, a quota-exhausted primary
+      # costs about 10s of sequential recovery per request; in parallel the second
+      # provider answers immediately and the request stays inside the 5s band.
       - key: GRIDWISE_CONSENSUS
-        value: "1"
+        value: "2"
       - key: GRIDWISE_LLM_TIMEOUT
         value: "10"
       - key: GRIDWISE_LLM_BUDGET
