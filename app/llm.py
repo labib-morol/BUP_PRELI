@@ -118,6 +118,23 @@ def available_providers() -> list[Provider]:
     if gemini_key:
         providers.append(_provider_gemini(
             gemini_key, os.getenv("GRIDWISE_GEMINI_MODEL", "gemini-flash-lite-latest")))
+    # A second Google key from a different Cloud project is a separate quota bucket,
+    # so it fails independently of the first even though it runs the same model.
+    second_key = os.getenv("GEMINI_API_KEY_2")
+    if second_key:
+        providers.append(_provider_gemini(
+            second_key, os.getenv("GRIDWISE_GEMINI_MODEL", "gemini-flash-lite-latest")))
+
+    # Any OpenAI-compatible endpoint can be slotted in without a code change, so a
+    # second vendor with its own quota can be added while the service is live:
+    #   EXTRA_BASE_URL=https://api.agentrouter.com/v1  EXTRA_MODEL=...  EXTRA_API_KEY=...
+    extra_key = os.getenv("EXTRA_API_KEY")
+    if extra_key:
+        providers.append(_provider_openai_compatible(
+            os.getenv("EXTRA_NAME", "extra"), extra_key,
+            os.getenv("EXTRA_MODEL", "gpt-4o-mini"),
+            os.getenv("EXTRA_BASE_URL") or None))
+
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         providers.append(_provider_openai_compatible(

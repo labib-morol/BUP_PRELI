@@ -121,7 +121,9 @@ or set them in the platform dashboard.
 | Variable | Required | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | one of these | Google Gemini provider (primary) |
-| `GROQ_API_KEY` | one of these | Groq provider (fast second opinion) |
+| `GEMINI_API_KEY_2` | no | second Google key from a different project: an independent quota bucket used as failover |
+| `EXTRA_API_KEY` / `EXTRA_BASE_URL` / `EXTRA_MODEL` / `EXTRA_NAME` | no | any OpenAI-compatible endpoint as a final failover provider |
+| `GROQ_API_KEY` | one of these | Groq provider (spare capacity) |
 | `OPENAI_API_KEY` | one of these | OpenAI provider |
 | `OPENROUTER_API_KEY` | one of these | OpenRouter provider |
 | `GRIDWISE_GEMINI_MODEL` | no | primary model, default `gemini-flash-lite-latest` |
