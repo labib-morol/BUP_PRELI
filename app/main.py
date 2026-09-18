@@ -15,10 +15,11 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from contextlib import asynccontextmanager
 
+from .demo import case_index, case_input, demo_page
 from .llm import available_providers, warm_up
 from .pipeline import run
 from .schemas import OptimizeRequest, OptimizeResponse
@@ -98,8 +99,29 @@ async def root() -> dict:
     return {
         "service": "GridWise Smart Campus Energy Optimization",
         "endpoints": ["GET /health", "POST /optimize-energy"],
+        "browser_demo": "/demo",
+        "api_contract": "/docs",
         "llm_providers_configured": [provider.name for provider in available_providers()],
     }
+
+
+# Browser-facing helpers. The judged contract is unchanged: the harness still calls
+# only /health and /optimize-energy. These exist because the address bar can only
+# issue GETs, so POST /optimize-energy answers 405 to a plain URL - which makes the
+# pipeline impossible to demonstrate from a URL alone.
+@app.get("/demo", response_class=HTMLResponse)
+async def demo() -> HTMLResponse:
+    return demo_page()
+
+
+@app.get("/demo/cases")
+async def demo_cases() -> list[dict]:
+    return case_index()
+
+
+@app.get("/demo/cases/{index}")
+async def demo_case(index: int) -> dict:
+    return case_input(index)
 
 
 def main() -> None:

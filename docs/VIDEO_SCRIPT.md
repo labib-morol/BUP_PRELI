@@ -18,24 +18,25 @@ quality is not judged; technical clarity is.
 
 ## Before you record (10 minutes of prep)
 
-1. Open a terminal at 120% zoom, clear font, dark background.
-2. Have these four windows ready to switch to:
+1. **Open the browser tab and warm the service first.** Go to
+   `https://gridwise-llm-rm21.onrender.com/demo` and click **Run optimization** once,
+   before you start recording. The Render free tier wakes from sleep on the first
+   request, so doing this first means the on-camera click responds in about a second
+   instead of stalling.
+2. Have these windows ready to switch to:
    - **A** — a text editor showing `app/prompt.py` lines 1–40 (the system prompt)
    - **B** — a text editor showing `app/optimizer.py` lines 60–100 (the LP constraints)
-   - **C** — the terminal, scrolled to a clean prompt
+   - **C** — the browser, on the `/demo` page
    - **D** — the architecture diagram (draw it once — see the box below)
-3. Paste this in the terminal (do **not** press Enter yet):
+3. Optional fallback if the browser misbehaves on the day:
+   `python tools/demo_request.py` prints the same result in a terminal, and works in
+   bash, PowerShell and cmd.
+4. Silence notifications. Record the whole thing in one take if you can.
 
-```
-python tools/demo_request.py
-```
-
-**Do not use raw `curl` here.** On Windows PowerShell, `curl` is an alias for
-`Invoke-WebRequest`, `\` is not a line continuation, and `@file` means splatting, so
-the command fails for reasons that have nothing to do with the service — which looks
-bad on camera. `demo_request.py` avoids all shell quoting issues and prints the
-interpretation, the full 24-hour plan, and a verdict line confirming the cost equals
-the organizer's reference optimum.
+**Do not use raw `curl` for the demo.** On Windows PowerShell, `curl` is an alias for
+`Invoke-WebRequest`, `\` is not a line continuation, and `@file` means splatting, so the
+command fails for reasons that have nothing to do with the service. The browser page and
+`demo_request.py` both avoid shell quoting entirely.
 
 4. Silence notifications. Record the whole thing in one take if you can.
 
@@ -136,24 +137,31 @@ the project, and the zero-gap claim is verifiable evidence of exactness.
 
 ---
 
-## 2:05–2:30 — How it runs and how we tested it (25s)
+## 2:05–2:30 — How it runs, live, in a browser (25s)
 
-**Visual:** Switch to the terminal (window **C**). Press Enter on the prepared `curl`.
-Let the JSON response appear on screen. Then run:
+**Visual:** Switch to the **browser**. This whole segment is URLs — no terminal at all.
 
-```
-python tools/test_public.py --http https://gridwise-llm-rm21.onrender.com
-```
+1. Open `https://gridwise-llm-rm21.onrender.com/health` → shows `{"status":"ok"}`
+2. Open `https://gridwise-llm-rm21.onrender.com/demo` → pick a case, click **Run
+   optimization**. Let the page fill in: the interpretation, the cost against the
+   reference with an `OPTIMAL` badge, the per-hour grid chart, and the 24-hour plan.
+3. If time allows, open `/docs` for a second to show the OpenAPI contract.
 
 **Narration:**
-> "The service is a FastAPI app on Render, containerised as a Docker fallback image, and
-> the health check runs with no credentials at all. Everything is reproducible from the
-> README. We tested it three ways: all ten public cases, a hand-built corpus of
-> paraphrases covering every wording the spec warns about, and a replay verifier that
-> re-checks each returned plan before it leaves the service."
+> "Everything here is reachable from a browser. The health endpoint confirms readiness
+> with no credentials at all. This demo page runs the full pipeline in one click — it
+> interprets the note, solves the schedule, and checks the result against the
+> organizer's own reference optimum, which you can see it matches exactly. The API
+> contract is documented at slash docs. And the same service ships as a Docker image,
+> so it can be pulled and run anywhere."
 
-**Why this works:** the rubric scores *how the submission is run and tested*. Show the
-command actually running rather than describing it.
+**Why this works:** the rubric scores *how the submission is run and tested*, and a
+browser demonstration is the least error-prone possible evidence — nothing can fail on
+shell quoting, and the judge sees the actual deployed service answering. Showing the
+reference-cost comparison on screen is stronger than any spoken claim.
+
+**If the page is slow on the first click:** that is the Render free tier waking up.
+Click once before recording so the container is warm.
 
 ---
 
