@@ -31,6 +31,7 @@ from app.llm import gather_readings  # noqa: E402
 from app.schemas import Battery, HourEntry, OptimizeRequest  # noqa: E402
 
 CORPUS = ROOT / "tools" / "notes_corpus.json"
+ADVERSARIAL = ROOT / "tools" / "notes_adversarial.json"
 
 DEMAND = [90, 85, 80, 80, 85, 95, 110, 130, 150, 165, 175, 180,
           185, 180, 170, 165, 170, 185, 205, 215, 205, 175, 135, 105]
@@ -143,10 +144,15 @@ async def run(entries: list[dict], verbose: bool) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--axis")
+    parser.add_argument("--corpus", choices=("main", "adversarial", "all"), default="all")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    entries = json.loads(CORPUS.read_text(encoding="utf-8"))["entries"]
+    sources = {"main": [CORPUS], "adversarial": [ADVERSARIAL],
+               "all": [CORPUS, ADVERSARIAL]}[args.corpus]
+    entries = []
+    for source in sources:
+        entries.extend(json.loads(source.read_text(encoding="utf-8"))["entries"])
     if args.axis:
         entries = [e for e in entries if args.axis in e["axis"]]
     return asyncio.run(run(entries, args.verbose))

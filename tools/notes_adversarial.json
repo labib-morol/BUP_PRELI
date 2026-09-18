@@ -1,0 +1,51 @@
+{
+  "_comment": "ADVERSARIAL corpus: wordings deliberately absent from the few-shot bank in app/prompt.py. Used to find real generalization failures rather than to confirm the prompt on its own examples. Ground truth is hand-written; entries marked verified_by_parser had their window and/or factor independently confirmed by the deterministic parser.",
+  "entries": [
+    {"id": "T-01", "axis": "time_military", "capacity_kwh": 200, "note": "Solar output will drop to 30% from 1400 to 1600.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [14, 15], "factor": 0.3}},
+    {"id": "T-02", "axis": "time_worded_evening", "capacity_kwh": 200, "note": "Keep at least 100 kWh in the battery between 6 and 9 in the evening.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [18, 19, 20], "minimum_energy_kwh": 100}},
+    {"id": "T-03", "axis": "time_noon", "capacity_kwh": 200, "note": "Panel cleaning will cut solar output to 40% from noon to 3 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [12, 13, 14], "factor": 0.4}},
+    {"id": "T-04", "axis": "time_through", "capacity_kwh": 200, "note": "Expect half the normal solar output from 9 AM through 11 AM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [9, 10], "factor": 0.5}},
+    {"id": "T-05", "axis": "time_duration", "capacity_kwh": 200, "note": "The battery charger will be offline starting at 7 PM for two hours.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [19, 20]}},
+    {"id": "T-06", "axis": "time_afternoon", "capacity_kwh": 200, "note": "Grid import must not exceed 150 kWh per hour from 1 to 3 in the afternoon.", "expect": {"applies": true, "directive_type": "max_grid_window", "hours": [13, 14], "max_grid_kwh": 150}},
+    {"id": "T-07", "axis": "time_reversed_order", "capacity_kwh": 200, "note": "Solar is reduced to 20% until 10 AM from 8 AM for inverter diagnostics.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [8, 9], "factor": 0.2}},
+    {"id": "T-08", "axis": "time_24h", "capacity_kwh": 200, "note": "Battery charging is blocked between 13:00 and 15:00.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [13, 14]}},
+    {"id": "T-09", "axis": "time_military", "capacity_kwh": 200, "note": "Reserve of at least 120 kWh must be held from 1800 to 2100.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [18, 19, 20], "minimum_energy_kwh": 120}},
+    {"id": "T-10", "axis": "time_midnight_span", "capacity_kwh": 200, "note": "Charging is unavailable from midnight until 4 AM.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [0, 1, 2, 3]}},
+
+    {"id": "P-01", "axis": "pct_fraction_word", "capacity_kwh": 200, "note": "Solar will be at a fifth of forecast from 1 PM until 3 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [13, 14], "factor": 0.2}},
+    {"id": "P-02", "axis": "pct_reduction_two_thirds", "capacity_kwh": 200, "note": "Cloud cover will cut solar by two-thirds during the 10 AM to noon window.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [10, 11], "factor": 0.333333}},
+    {"id": "P-03", "axis": "pct_implicit_direction", "capacity_kwh": 200, "note": "Rooftop solar output will be down 40% between 2 PM and 4 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [14, 15], "factor": 0.6}},
+    {"id": "P-04", "axis": "pct_to_percent", "capacity_kwh": 200, "note": "Solar output reduced to 15 percent from 11 AM to 1 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [11, 12], "factor": 0.15}},
+    {"id": "P-05", "axis": "pct_half_usual", "capacity_kwh": 200, "note": "Expect half the usual solar generation from 9 AM to 11 AM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [9, 10], "factor": 0.5}},
+    {"id": "P-06", "axis": "pct_bare_number", "capacity_kwh": 200, "note": "Solar drops 25% between 3 PM and 5 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [15, 16], "factor": 0.75}},
+    {"id": "P-07", "axis": "pct_reduction_high", "capacity_kwh": 200, "note": "A 90% reduction in solar output is expected from 12 PM to 2 PM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [12, 13], "factor": 0.1}},
+    {"id": "P-08", "axis": "pct_one_third", "capacity_kwh": 200, "note": "Solar generation will be one-third of normal from 8 AM until 10 AM.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [8, 9], "factor": 0.333333}},
+    {"id": "P-09", "axis": "pct_of_capacity_indirect", "capacity_kwh": 200, "note": "Rooftop generation falls to 10% of forecast during 1 PM to 3 PM maintenance.", "expect": {"applies": true, "directive_type": "solar_reduction", "hours": [13, 14], "factor": 0.1}},
+
+    {"id": "R-01", "axis": "reserve_must_hold", "capacity_kwh": 240, "note": "The battery must hold at least 150 kWh from 7 PM to 9 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [19, 20], "minimum_energy_kwh": 150}},
+    {"id": "R-02", "axis": "reserve_pct_bare", "capacity_kwh": 200, "note": "Keep 25% in reserve between 6 PM and 8 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [18, 19], "minimum_energy_kwh": 50}},
+    {"id": "R-03", "axis": "reserve_soc", "capacity_kwh": 250, "note": "A minimum state of charge of 80 kWh is required from 5 PM until 8 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [17, 18, 19], "minimum_energy_kwh": 80}},
+    {"id": "R-04", "axis": "reserve_pct_capacity", "capacity_kwh": 250, "note": "Keep a reserve of at least 60% of capacity from 6 PM until 9 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [18, 19, 20], "minimum_energy_kwh": 150}},
+    {"id": "R-05", "axis": "reserve_not_below", "capacity_kwh": 220, "note": "Do not let the battery drop below 100 kWh from 7 PM to 10 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [19, 20, 21], "minimum_energy_kwh": 100}},
+    {"id": "R-06", "axis": "reserve_maintain", "capacity_kwh": 200, "note": "Maintain at least 45 kWh in the battery between 8 PM and 10 PM.", "expect": {"applies": true, "directive_type": "minimum_battery_reserve", "hours": [20, 21], "minimum_energy_kwh": 45}},
+
+    {"id": "C-01", "axis": "nocharge_should_not_be", "capacity_kwh": 200, "note": "The battery should not be charging between 3 PM and 5 PM.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [15, 16]}},
+    {"id": "C-02", "axis": "nocharge_blocked", "capacity_kwh": 200, "note": "Charging is blocked from 1 AM to 3 AM.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [1, 2]}},
+    {"id": "C-03", "axis": "nocharge_suspend", "capacity_kwh": 200, "note": "Suspend battery charging from 10 AM to noon.", "expect": {"applies": true, "directive_type": "no_charge_window", "hours": [10, 11]}},
+    {"id": "D-01", "axis": "nodischarge_no_gerund", "capacity_kwh": 200, "note": "No discharging between 7 PM and 9 PM during switchgear tests.", "expect": {"applies": true, "directive_type": "no_discharge_window", "hours": [19, 20]}},
+    {"id": "D-02", "axis": "nodischarge_prohibited", "capacity_kwh": 200, "note": "Battery discharge is prohibited from 4 PM until 6 PM.", "expect": {"applies": true, "directive_type": "no_discharge_window", "hours": [16, 17]}},
+    {"id": "D-03", "axis": "nodischarge_hold", "capacity_kwh": 200, "note": "Hold battery discharge from 8 AM to 10 AM while the relay is serviced.", "expect": {"applies": true, "directive_type": "no_discharge_window", "hours": [8, 9]}},
+
+    {"id": "G-01", "axis": "grid_peak_limited", "capacity_kwh": 200, "note": "Peak grid import is limited to 150 kWh between 6 PM and 8 PM.", "expect": {"applies": true, "directive_type": "max_grid_window", "hours": [18, 19], "max_grid_kwh": 150}},
+    {"id": "G-02", "axis": "grid_not_more_than", "capacity_kwh": 200, "note": "Do not draw more than 200 kWh from the grid from 5 PM to 7 PM.", "expect": {"applies": true, "directive_type": "max_grid_window", "hours": [17, 18], "max_grid_kwh": 200}},
+    {"id": "G-03", "axis": "grid_capped", "capacity_kwh": 200, "note": "Grid draw is capped at 175 kWh per hour from 7 PM to 9 PM.", "expect": {"applies": true, "directive_type": "max_grid_window", "hours": [19, 20], "max_grid_kwh": 175}},
+    {"id": "G-04", "axis": "grid_ceiling", "capacity_kwh": 200, "note": "The substation sets a ceiling of 160 kWh per hour from 6 PM until 9 PM.", "expect": {"applies": true, "directive_type": "max_grid_window", "hours": [18, 19, 20], "max_grid_kwh": 160}},
+
+    {"id": "N-01", "axis": "distractor_energy_flavoured", "capacity_kwh": 200, "note": "The HVAC maintenance scheduled for tomorrow has been confirmed.", "expect": {"applies": false, "directive_type": "no_op"}},
+    {"id": "N-02", "axis": "distractor_energy_flavoured", "capacity_kwh": 200, "note": "Solar panel warranty expires in 2028.", "expect": {"applies": false, "directive_type": "no_op"}},
+    {"id": "N-03", "axis": "distractor_energy_flavoured", "capacity_kwh": 200, "note": "The diesel generator was refueled yesterday.", "expect": {"applies": false, "directive_type": "no_op"}},
+    {"id": "N-04", "axis": "distractor_energy_flavoured", "capacity_kwh": 200, "note": "The energy dashboard was upgraded over the weekend.", "expect": {"applies": false, "directive_type": "no_op"}},
+    {"id": "N-05", "axis": "distractor_wrong_day", "capacity_kwh": 200, "note": "Battery replacement is planned for next quarter.", "expect": {"applies": false, "directive_type": "no_op"}},
+    {"id": "N-06", "axis": "distractor_energy_flavoured", "capacity_kwh": 200, "note": "A sustainability report will be published next month.", "expect": {"applies": false, "directive_type": "no_op"}}
+  ]
+}

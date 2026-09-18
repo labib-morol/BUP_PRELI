@@ -59,6 +59,9 @@ _WORDS = {
     "three-quarters": 0.75,
     "one-third": 1 / 3,
     "two-thirds": 2 / 3,
+    "fifth": 0.2,
+    "third": 1 / 3,
+    "tenth": 0.1,
     "one-fifth": 0.2,
     "two-fifths": 0.4,
     "three-fifths": 0.6,
@@ -117,31 +120,53 @@ def expected_window(note: str) -> tuple[int, ...] | None:
 def expected_solar_factor(note: str) -> float | None:
     """The usable-solar fraction implied by a percentage or fraction word.
 
-    "drop to 20%", "20% of normal", "leaves one-fifth"  -> 0.2  (fraction left)
-    "80% reduction", "drops by 20%", "reduction of 30%" -> 0.2 / 0.8 / 0.7
+    Direction is the trap: "drops to 20%", "20% of normal", "limited to 40%" and
+    "leaves one-fifth" all leave that fraction usable, while "drops by 20%",
+    "a 20% reduction", "down 40%", "drops 25%" and "cut by two-thirds" leave the
+    complement. Reading it backwards invalidates the case, so both directions are
+    covered explicitly, including verb forms that carry the reduction without "by".
     """
-    match = _PERCENT.search(note)
-    if match:
-        percent = float(match.group(1))
-        if percent > 100:
-            return None
-        suffix = note[match.end():match.end() + 24].lower()
-        prefix = note[max(0, match.start() - 48):match.start()].lower()
-        if re.match(r"\s*(?:reduction|drop|decrease|cut|decline|fall|less|lower|off)\b", suffix):
-            return round(1.0 - percent / 100.0, 6)
-        tail = prefix[-16:]
-        if re.search(r"\b(by|of)\s*$", tail) and _REDUCTION_CUE.search(prefix):
-            return round(1.0 - percent / 100.0, 6)
-        if re.search(r"\b(reduction|decrease|drop|cut)\s*$", tail):
-            return round(1.0 - percent / 100.0, 6)
-        return round(percent / 100.0, 6)
-
     lowered = note.lower()
-    if re.search(r"\b(zero|nil|no solar|no output|no generation)\b", lowered):
+
+    if re.search(r"\b(zero|nil)\b", lowered):
         return 0.0
+
+    percent = _PERCENT.search(note)
+    if percent is not None:
+        value = float(percent.group(1))
+        if value > 100:
+            return None
+        prefix = lowered[max(0, percent.start() - 56):percent.start()]
+        suffix = lowered[percent.end():percent.end() + 24]
+
+        # "80% reduction", "drops 25%", "40% less", "30% saving"
+        if re.match(r"\s*(?:reduction|drop|decrease|cut|decline|fall|less|lower|off|saving)",
+                    suffix):
+            return round(1.0 - value / 100.0, 6)
+        # "by 20%", "down 40%", "20% off" - these words carry the direction themselves,
+        # so they are sufficient without also matching a reduction verb.
+        if re.search(r"\b(?:by|down|off)\s*$", prefix):
+            return round(1.0 - value / 100.0, 6)
+        # "drops 25%" - a reduction verb immediately before a bare number
+        if re.search(r"\b(?:drop(?:s|ped)?|cut(?:s)?|falls?|fell|decline[sd]?|"
+                     r"decrease[sd]?|reduce[sd]?)\s*$", prefix):
+            return round(1.0 - value / 100.0, 6)
+        # "a reduction of 30% is expected" - the noun precedes the number
+        if re.search(r"\b(?:reduction|decrease|drop|cut|decline|savings?)\s+(?:of\s+)?$",
+                     prefix):
+            return round(1.0 - value / 100.0, 6)
+        return round(value / 100.0, 6)
+
     for word, value in _WORDS.items():
-        if re.search(rf"\b{re.escape(word)}\b", lowered):
-            return value
+        match = re.search(r"\b" + re.escape(word) + r"\b", lowered)
+        if match is None:
+            continue
+        prefix = lowered[max(0, match.start() - 56):match.start()]
+        # "cut solar by two-thirds" reduces output, so the usable fraction is the
+        # complement; "one-third of normal" is the fraction itself.
+        if re.search(r"\bby\s*$", prefix) and _REDUCTION_CUE.search(prefix):
+            return round(1.0 - value, 6)
+        return value
     return None
 
 

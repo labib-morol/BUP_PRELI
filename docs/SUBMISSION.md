@@ -37,7 +37,7 @@ https://github.com/labib-morol/BUP_PRELI
 
 ```
 labibmorol/gridwise-llm:1.0.0
-sha256:ff07caa8271ec7ed5d7c995b740d65b061fa011f1470e333a8bae3f8ee3cc498
+sha256:248f70034310d03e541e9638f422868621f49eb72b8019373352be210a559e61
 ```
 
 Repository is **public**, so judges can pull without credentials. Verified
