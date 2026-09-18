@@ -9,7 +9,7 @@ import logging
 
 from .directives import Directive
 from .directives import NO_OP
-from .guardrails import Assessment, assess, explain, factor_candidate, window_candidate
+from .guardrails import Assessment, assess, explain, factor_candidate, window_candidate, wrap_candidate
 from .llm import gather_readings
 from .optimizer import Solution, solve, static_plan, to_plan, totals
 from .schemas import DirectiveInterpretation, HourlyPlanEntry, OptimizeRequest, OptimizeResponse
@@ -67,7 +67,8 @@ async def run(request: OptimizeRequest) -> tuple[OptimizeResponse, dict]:
         parsed = [_parse(raw, battery.capacity_kwh) for raw in readings[index]]
         primary = parsed[0] if parsed else NO_OP
         for candidate in (window_candidate(note, primary),
-                          factor_candidate(note, primary)):
+                          factor_candidate(note, primary),
+                          wrap_candidate(note, primary)):
             if candidate is not None:
                 parsed.append(candidate)
         assessments.append(assess(index, note, parsed, battery.capacity_kwh))

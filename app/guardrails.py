@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
-from .directives import NO_OP, Directive, union_all
+from .directives import NO_OP, WINDOW_TYPES, Directive, union_all
 
 MAX_HOUR = 23
 
@@ -37,6 +37,8 @@ _CLOCK = re.compile(
 _CONNECTOR = re.compile(
     r"\b(to|until|till|through|throughout|and|between|from)\b|[-–—]", re.IGNORECASE
 )
+_FILLER = (r"(?:roughly|about|approximately|around|nearly|almost|some|up\s+to)")
+
 _PERCENT = re.compile(_NUMBER + r"\s*(?:%|percent|per cent)", re.IGNORECASE)
 _REDUCTION_CUE = re.compile(
     r"\b(reduction|reduce[sd]?|drop(?:s|ped)?\s+by|decrease[sd]?|cut|lower(?:ed)?|"
@@ -103,18 +105,69 @@ def clock_mentions(note: str) -> list[int]:
 def expected_window(note: str) -> tuple[int, ...] | None:
     """The window implied by two explicit clock times, or None when ambiguous.
 
-    Whole-hour, start-inclusive and end-exclusive, exactly as the Problem
-    Statement defines it: "1 PM to 3 PM" -> (13, 14).  A window that would wrap
-    past midnight cannot be expressed as ascending hours, so it is reported as
-    ambiguous rather than guessed.
+    Whole-hour, start-inclusive and end-exclusive, exactly as the Problem Statement
+    defines it: "1 PM to 3 PM" -> (13, 14).
+
+    Two awkward shapes are handled rather than discarded, because discarding them
+    means the caller has no second reading to hedge with:
+
+    * a reversed construction ("until 10 AM from 8 AM") is the same window written
+      back to front, so the two times are swapped;
+    * a window that genuinely crosses midnight ("10 PM until 2 AM") is returned as the
+      ascending union of both sides, which is the only form the response schema allows
+      and is a superset of the plain reading - the safe direction for every
+      window-type directive.
     """
     hours = clock_mentions(note)
     if len(hours) != 2 or not _CONNECTOR.search(note):
         return None
-    start, end = hours
-    if end <= start:
+    first, second = hours
+
+    lowered = note.lower()
+    from_at = lowered.find("from")
+    until_at = min([p for p in (lowered.find("until"), lowered.find("till"),
+                                lowered.find("through")) if p != -1] or [-1])
+    if from_at != -1 and until_at != -1 and until_at < from_at:
+        first, second = second, first
+
+    start, end = first, second
+    if end > start:
+        return tuple(range(start, end))
+    if end == start:
         return None
-    return tuple(range(start, end))
+    # Crosses midnight. The plausible reading ends the day at hour 23; the safe
+    # superset is produced separately by wrap_candidate.
+    return tuple(range(start, 24))
+
+
+def wrap_candidate(note: str, reported: Directive) -> Directive | None:
+    """The superset of a midnight-crossing window, to be enforced alongside the reading.
+
+    A window-type directive is satisfied by any superset of its hours, so enforcing the
+    union of "clamped at midnight" and "wraps into the morning" keeps the plan valid
+    under either reading of an ambiguous note. Returned only when the note actually
+    crosses midnight, so the cost is confined to notes that are genuinely ambiguous.
+    """
+    if not reported.applies or reported.directive_type not in WINDOW_TYPES:
+        return None
+    hours = clock_mentions(note)
+    if len(hours) != 2 or not _CONNECTOR.search(note):
+        return None
+
+    lowered = note.lower()
+    from_at = lowered.find("from")
+    until_at = min([p for p in (lowered.find("until"), lowered.find("till"),
+                                lowered.find("through")) if p != -1] or [-1])
+    if from_at != -1 and until_at != -1 and until_at < from_at:
+        return None
+
+    start, end = hours
+    if end >= start:
+        return None
+    full = tuple(sorted(set(range(start, 24)) | set(range(0, end))))
+    if full == reported.hours:
+        return None
+    return replace(reported, hours=full)
 
 
 def expected_solar_factor(note: str) -> float | None:
@@ -122,9 +175,11 @@ def expected_solar_factor(note: str) -> float | None:
 
     Direction is the trap: "drops to 20%", "20% of normal", "limited to 40%" and
     "leaves one-fifth" all leave that fraction usable, while "drops by 20%",
-    "a 20% reduction", "down 40%", "drops 25%" and "cut by two-thirds" leave the
-    complement. Reading it backwards invalidates the case, so both directions are
-    covered explicitly, including verb forms that carry the reduction without "by".
+    "a 20% reduction", "down 40%", "drops 25%", "cut by two-thirds" and
+    "reduced by about 75%" leave the complement. Reading it backwards invalidates the
+    case, so both directions are covered explicitly, including verb forms that carry
+    the reduction without "by" and phrasings where an adverb sits between the
+    direction word and the number.
     """
     lowered = note.lower()
 
@@ -136,20 +191,19 @@ def expected_solar_factor(note: str) -> float | None:
         value = float(percent.group(1))
         if value > 100:
             return None
-        prefix = lowered[max(0, percent.start() - 56):percent.start()]
+        prefix = lowered[max(0, percent.start() - 64):percent.start()]
         suffix = lowered[percent.end():percent.end() + 24]
 
         # "80% reduction", "drops 25%", "40% less", "30% saving"
         if re.match(r"\s*(?:reduction|drop|decrease|cut|decline|fall|less|lower|off|saving)",
                     suffix):
             return round(1.0 - value / 100.0, 6)
-        # "by 20%", "down 40%", "20% off" - these words carry the direction themselves,
-        # so they are sufficient without also matching a reduction verb.
-        if re.search(r"\b(?:by|down|off)\s*$", prefix):
+        # "by 20%", "down 40%", "by roughly 60%", "by about 75%"
+        if re.search(r"\b(?:by|down|off)\s+(?:" + _FILLER + r"\s+)?$", prefix):
             return round(1.0 - value / 100.0, 6)
-        # "drops 25%" - a reduction verb immediately before a bare number
+        # "drops 25%", "cut 40%" - a reduction verb before a bare number, adverbs allowed
         if re.search(r"\b(?:drop(?:s|ped)?|cut(?:s)?|falls?|fell|decline[sd]?|"
-                     r"decrease[sd]?|reduce[sd]?)\s*$", prefix):
+                     r"decrease[sd]?|reduce[sd]?)\s+(?:" + _FILLER + r"\s+)?$", prefix):
             return round(1.0 - value / 100.0, 6)
         # "a reduction of 30% is expected" - the noun precedes the number
         if re.search(r"\b(?:reduction|decrease|drop|cut|decline|savings?)\s+(?:of\s+)?$",
@@ -161,10 +215,9 @@ def expected_solar_factor(note: str) -> float | None:
         match = re.search(r"\b" + re.escape(word) + r"\b", lowered)
         if match is None:
             continue
-        prefix = lowered[max(0, match.start() - 56):match.start()]
-        # "cut solar by two-thirds" reduces output, so the usable fraction is the
-        # complement; "one-third of normal" is the fraction itself.
-        if re.search(r"\bby\s*$", prefix) and _REDUCTION_CUE.search(prefix):
+        prefix = lowered[max(0, match.start() - 64):match.start()]
+        # "cut solar by two-thirds", "reduced by roughly half"
+        if re.search(r"\bby\s+(?:" + _FILLER + r"\s+)?$", prefix) and _REDUCTION_CUE.search(prefix):
             return round(1.0 - value, 6)
         return value
     return None

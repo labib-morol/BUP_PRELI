@@ -276,7 +276,7 @@ curl http://127.0.0.1:8000/health
 ```
 
 Published reference: `labibmorol/gridwise-llm:1.0.0`
-(`sha256:5ecc8e427dd989a6d6ac3ab8fb6e9f4afa20391ed79fe9a9c193748d5205bcd4`).
+(`sha256:9db69cddf17ecafad29610ee8e617876a816c6326d172a574613364135364ede`).
 
 Verified before publishing: `/health` answers `200 {"status":"ok"}` in ~13 ms with
 **no environment variables set at all**, and the image contains no credentials -

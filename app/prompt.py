@@ -46,6 +46,11 @@ TIME WINDOWS (whole hours, start included, end excluded)
 "between 12:00 and 15:00" -> [12, 13, 14]. "one until three" (1 PM to 3 PM) -> [13, 14].
 Hours must be ascending, unique, integers 0-23. "1-3 PM" means 1 PM to 3 PM.
 "12 PM" is hour 12 (noon). "12 AM" is hour 0 (midnight).
+If a window appears to cross midnight, treat the end as the end of the day: hours from
+the start through hour 23. "10 PM until 12 PM" -> [22, 23]. "9 PM-12 AM" -> [21, 22, 23].
+Never answer no_op for a note that names a time window and a real constraint. If the
+window is awkward, still give your best reading of the hours - an unusual window is
+far better than ignoring the note.
 
 PERCENTAGES - read the direction carefully
 - "solar drops to 20%" / "20% of normal" / "limited to 40%" / "leaves one-fifth"
